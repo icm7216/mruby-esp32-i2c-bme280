@@ -1,0 +1,8 @@
+MRuby::Gem::Specification.new('mruby-esp32-i2c-bme280') do |spec|
+  spec.license = 'MIT'
+  spec.authors = 'icm7216'
+
+  spec.cc.include_paths << "#{build.root}/src"
+
+  spec.add_dependency('mruby-esp32-i2c', :github => "mruby-esp32/mruby-esp32-i2c")
+end
