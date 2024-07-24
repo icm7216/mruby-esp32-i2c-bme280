@@ -4,8 +4,8 @@
 #   This libraries are adapted from :bme280.rb => lukasjapan/i2c-bme280.
 #   https://github.com/lukasjapan/i2c-bme280
 #
-#   refer to BST-BME280_DS001-12.pdf
-#   https://ae-bst.resource.bosch.com/media/_tech/media/datasheets/BST-BME280_DS001-12.pdf
+#   refer to BST-BME280-DS001-24(bst-bme280-ds002.pdf)
+#   https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bme280-ds002.pdf
 #
 
 module SENSOR
@@ -22,7 +22,7 @@ module SENSOR
       # BME280 register setting
       set_register
 
-      # read trimming parameter 
+      # read trimming parameter
       read_trim_params
       self
     end
@@ -53,27 +53,59 @@ module SENSOR
 
   private
 
-    # Suggested settings for indoor navigation, BST-BME280_DS001-12.pdf (page: 18)
+
+
     def set_register
+      # IIR filter coefficient
+      #   filter off    =>  0b000
+      #   filter  x2    =>  0b001
+      #   filter  X4    =>  0b010
+      #   filter  x8    =>  0b011
+      #   filter x16    =>  0b100
+      #
+      # oversampling (Temperature, Humidity, Pressure)
+      #   sampling none =>  0b000
+      #   sampling   x1 =>  0b001
+      #   sampling   X2 =>  0b010
+      #   sampling   x4 =>  0b011
+      #   sampling   x8 =>  0b100
+      #   sampling  x16 =>  0b101
+      #
+      # sensor mode
+      #   sleep         => 0b00
+      #   forced        => 0b01
+      #   normal        => 0b11
+      #
+      # standby time [ms]
+      #       0.5       => 0b000
+      #      62.5       => 0b001
+      #     125         => 0b010
+      #     250         => 0b011
+      #     500         => 0b100
+      #    1000         => 0b101
+      #      10         => 0b110
+      #      20         => 0b111
+      #
+
       # set config registers
       config_reg  = 0xF5        # Register address for config settings
       t_sb        = 0b000       # Standby time = 0.5ms (0b000)
-      filter      = 0b100       # filter coefficient = 16
+      filter      = 0b000       # filter coefficient = OFF
       spi3w_en    = 0           # Disable SPI
       config_val  = (t_sb << 5) | (filter << 2) | spi3w_en
       write(config_reg, config_val)
 
       # set ctrl_meas registers
       tp_reg      = 0xF4        # Register address for temperature/pressure settings
-      osrs_t      = 0b010       # Temperature oversampling = x2 (0b010)
+      osrs_t      = 0b101       # Temperature oversampling = x16 (0b101)
       osrs_p      = 0b101       # Pressure oversampling = x16 (0b101)
       mode        = 0b11        # Normal mode (0b11)
       tp_val      = (osrs_t << 5) | (osrs_p << 2) | mode
       write(tp_reg, tp_val)
 
-      # set ctrl_hum registers      
-      hum_reg     = 0xF2        # Register address for humidity settings      
-      osrs_h      = 0b001       # Humidity oversampling = x1 (0b001)
+      # set ctrl_hum registers
+      hum_reg     = 0xF2        # Register address for humidity settings
+      osrs_h      = 0b101       # Humidity oversampling = x16 (0b101)
       hum_val     = osrs_h
       write(hum_reg, hum_val)
     end
@@ -92,7 +124,7 @@ module SENSOR
     end
 
     # Read compensation parameters of the BME280
-    # refer to BST-BME280_DS001-12.pdf (Page 22)
+    # refer to bst-bme280-ds002.pdf (Page 24)
     def read_trim_params
       # compensation parameter register mapping
       Calibration = Struct.new(
@@ -117,16 +149,16 @@ module SENSOR
         :dig_H6,  # 0xE7              dig_H6                signed char
         :t_fine
       )
-      calib = []      
+      calib = []
 
       # data addresses
       dig_t_reg  = 0x88
       dig_p_reg  = 0x8E
       dig_h_reg1 = 0xA1
       dig_h_reg2 = 0xE1
-      
+
       data = read(dig_t_reg, 6)
-      calib << ((data[1] << 8) | data[0])         # uint16_t dig_T1 [1][0] 
+      calib << ((data[1] << 8) | data[0])         # uint16_t dig_T1 [1][0]
       calib << int16(data[3], data[2])            # int16_t  dig_T2 [3][2]
       calib << int16(data[5], data[4])            # int16_t  dig_T3 [5][4]
 
@@ -143,75 +175,76 @@ module SENSOR
 
       data = read(dig_h_reg1, 1)
       calib << data[0]                            # uint8_t  dig_H1 [0]
-      
+
       data = read(dig_h_reg2, 7)
       calib << int16(data[1], data[0])            # int16_t  dig_H2 [1],[0]
-      calib << data[2]                            # uint8_t  dig_H3 [2]      
+      calib << data[2]                            # uint8_t  dig_H3 [2]
 
         #  109876543210      bit[11:0]
         #  xxxxxxxx....      dig_H4_msb [11:4]  [3]
         #      ....xxxx      dig_H4_lsb [3:0]   [4]
-        #  xxxxxxxxxxxx      dig_H4     [11:0] 
+        #  xxxxxxxxxxxx      dig_H4     [11:0]
         dig_H4_msb = (data[3] >> 4) & 0x0F
-        dig_H4_lsb = ((data[3] << 4) & 0xF0) | (data[4] & 0x0F)  
+        dig_H4_lsb = ((data[3] << 4) & 0xF0) | (data[4] & 0x0F)
       calib << int16(dig_H4_msb, dig_H4_lsb)      # int16_t  dig_H4 [3][4]
-      
+
         #  109876543210      bit[11:0]
         #  xxxxxxxx....      dig_H5_msb [11:4]  [5]
         #          xxxx....  dig_H5_lsb [7:4]   [4]
         #  xxxxxxxxxxxx      dig_H5     [11:0]
         dig_H5_msb = (data[5] >> 4) & 0x0F
-        dig_H5_lsb = ((data[5] << 4) & 0xF0) | (data[4] >> 4)  
+        dig_H5_lsb = ((data[5] << 4) & 0xF0) | (data[4] >> 4)
       calib << int16(dig_H5_msb, dig_H5_lsb)      # int16_t  dig_H5 [4][5]
-                
+
       calib << int8(data[6])                      # int8_t   dig_H6 [6]
 
       @calib = Calibration.new(*calib)
     end
 
-    # compensate temperature 
-    # refer to BST-BME280_DS001-12.pdf (page: 23)
+    # compensate temperature
+    # refer to bst-bme280-ds002.pdf (page: 49)
     def trim_t(adc_T)
-      var1 = ((((adc_T >> 3) - (@calib[:dig_T1] << 1))) * @calib[:dig_T2]) >> 11
-      var2 = (((((adc_T >> 4) - @calib[:dig_T1]) * ((adc_T >> 4) - @calib[:dig_T1])) >> 12) * @calib[:dig_T3]) >> 14
+      var1 = (adc_T / 16384.0 - @calib[:dig_T1] / 1024.0) * @calib[:dig_T2]
+      var2 = ((adc_T / 131072.0 - @calib[:dig_T1] / 8192.0) * (adc_T / 131072.0 - @calib[:dig_T1] / 8192.0)) * @calib[:dig_T3]
       @calib[:t_fine] = var1 + var2
-      t = ((@calib[:t_fine] * 5 + 128) >> 8) / 100
+      t = @calib[:t_fine] / 5120.0
     end
 
     # compensate pressure
-    # refer to BST-BME280_DS001-12.pdf (page: 50)
+    # refer to bst-bme280-ds002.pdf (page: 49)
     def trim_p(adc_P)
-      var1 = (@calib[:t_fine] >> 1) - 64000
-      var2 = (((var1 >> 2) * (var1 >> 2)) >> 11) * @calib[:dig_P6]
-      var2 = var2 + ((var1 * @calib[:dig_P5]) << 1)
-      var2 = (var2 >> 2) + (@calib[:dig_P4] << 16)
-      var1 = (((@calib[:dig_P3] * (((var1 >> 2) * (var1 >> 2)) >> 13)) >> 3) + ((@calib[:dig_P2] * var1) >> 1)) >> 18
-      var1 = ((0x8000 + var1) * @calib[:dig_P1]) >> 15
+      var1 = (@calib[:t_fine] / 2.0) - 64000.0
+      var2 = var1 * var1 / 32768.0 * @calib[:dig_P6]
+      var2 = var2 + ((var1 * @calib[:dig_P5]) * 2.0)
+      var2 = (var2 / 4.0) + (@calib[:dig_P4] * 65536.0)
+      var1 = (@calib[:dig_P3] * var1 * var1 / 524288.0 + @calib[:dig_P2] * var1) / 524288.0
+      var1 = (1.0 + var1 / 32768.0) * @calib[:dig_P1]
 
       if var1 == 0
         p = 0.0
       else
-        p = (0x100000 - adc_P - (var2 >> 12)) * 3125
-        p = (p << 1) / var1
-        var1 = (@calib[:dig_P9] * ((p >> 3) * (p >> 3)) >> 13) >> 12
-        var2 = ((p >> 2) * @calib[:dig_P8]) >> 13
-        p = p + ((var1 + var2 + @calib[:dig_P7]) >> 4)
-        p /= 100
+        p = 1048576.0 - adc_P
+        p = (p - (var2 / 4096.0)) * 6250.0 / var1
+        var1 = @calib[:dig_P9] * p * p / 2147483648.0
+        var2 = p * @calib[:dig_P8] / 32768.0
+        p = p + (var1 + var2 + @calib[:dig_P7]) / 16.0
+        p /= 100.0
       end
     end
 
     # compensate humidity
-    # refer to BST-BME280_DS001-12.pdf (page: 23)            
+    # refer to bst-bme280-ds002.pdf (page: 49)
     def trim_h(adc_H)
-      h = @calib[:t_fine] - 76800
-      h = ((((adc_H << 14) - (@calib[:dig_H4] << 20) - (@calib[:dig_H5] * h)) + 0x4000) >> 15) * 
-      (((((((h * (@calib[:dig_H6])) >> 10) * (((h * @calib[:dig_H3]) >> 11) + 0x8000)) >> 10) + 0x200000) * @calib[:dig_H2] + 0x2000) >> 14)
-      h = h - (((((h >> 15) * (h >> 15)) >> 7) * @calib[:dig_H1]) >> 4)
-      h = h < 0 ? 0 : h
-      h = h > 419430400 ? 419430400 : h
-      h = (h >> 12) / 1024
+      h = @calib[:t_fine] - 76800.0
+      h1 = adc_H - (@calib[:dig_H4] * 64.0 + @calib[:dig_H5] / 16384.0 * h)
+      h2 = @calib[:dig_H2] / 65536.0 * (1.0 + @calib[:dig_H6] / 67108864.0 * h * (1.0 + @calib[:dig_H3] / 67108864.0 * h))
+      h = h1 * h2
+      h = h * (1.0 - @calib[:dig_H1] * h / 524288.0)
+      h = 100.0 if h > 100.0
+      h = 0.0 if h < 0.0
+      h
     end
-    
+
     # Measurement of temperature, pressure and humidity
     # return all compensated values
     def data
@@ -225,8 +258,8 @@ module SENSOR
       # Apply compensation to received ADC data and return as hash
       {
         t: trim_t(adc_T),
-        p: trim_p(adc_P).round(2),
-        h: trim_h(adc_H).round(2)         
+        p: trim_p(adc_P),
+        h: trim_h(adc_H)
       }
     end
 
@@ -240,6 +273,6 @@ module SENSOR
     def read(reg_address, size = 1)
       receive(reg_address, size, @addr)
     end
-  
+
   end
 end
