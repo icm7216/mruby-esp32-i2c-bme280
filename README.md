@@ -43,9 +43,11 @@ In advance, you will need to add several mrbgems to `esp32_build_config.rb`
 ```ruby
   conf.gem :core => "mruby-sprintf"
   conf.gem :core => "mruby-toplevel-ext"
+  conf.gem :core => "mruby-struct"
   conf.gem :github => "mruby-esp32/mruby-esp32-i2c"
   conf.gem :github => "mruby-esp32/mruby-esp32-system"
   conf.gem :github => "icm7216/mruby-esp32-i2c-ssd1306"
+  conf.gem :github => "iij/mruby-pack"
 ```
 
 # code
@@ -59,6 +61,7 @@ include ESP32
 i2c = I2C.new(I2C::PORT0, scl: 22, sda: 21).init(I2C::MASTER)
 bme280 = SENSOR::BME280.new(i2c)
 bme280.init
+System.delay(500)
 
 puts "temp: #{'%.2f' % bme280.temperature}"
 puts "hum:  #{'%.2f' % bme280.humidity}"
@@ -77,6 +80,7 @@ include ESP32
 i2c = I2C.new(I2C::PORT0, scl: 22, sda: 21).init(I2C::MASTER)
 bme280 = SENSOR::BME280.new(i2c).init
 oled = OLED::SSD1306.new(i2c).init.clear
+System.delay(500)
 
 def view_data(oled, bme280)
   temperature = "#{'%.2f' % bme280.temperature}"
